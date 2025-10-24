@@ -709,6 +709,7 @@ with tab2:
                 except Exception as e:
                     st.error(f"❌ Generation error: {str(e)}")
 
+
 # TAB 3: Generated Documents
 with tab3:
     st.header("📄 Generated Documents")
@@ -756,3 +757,351 @@ with tab3:
                         label="⬇️ Download",
                         data=edited_content,
                         file_name=doc['filename'],
+                        mime="text/plain"
+                    )
+                with col2:
+                    if st.button("🗑️ Delete", key=f"del_{idx}"):
+                        st.session_state.generated_docs.pop(idx)
+                        st.rerun()
+
+# TAB 4: Agent Configuration
+with tab4:
+    st.header("🤖 Agent Configuration")
+    st.markdown("Configure your AI agent pipeline")
+    
+    # Model options
+    MODEL_OPTIONS = {
+        'gemini': ['gemini-2.5-flash', 'gemini-2.5-flash-lite'],
+        'openai': ['gpt-5-nano', 'gpt-4o-mini', 'gpt-4.1-mini'],
+        'grok': ['grok-4-fast-reasoning', 'grok-3-mini']
+    }
+    
+    # Load/Save agents configuration
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        uploaded_agents = st.file_uploader("📂 Load agents.yaml", type=['yaml', 'yml'])
+        if uploaded_agents:
+            try:
+                st.session_state.agents_config = yaml.safe_load(uploaded_agents)
+                st.success("✅ Agents configuration loaded!")
+            except Exception as e:
+                st.error(f"❌ Error loading config: {str(e)}")
+    
+    with col2:
+        if st.button("💾 Save Config"):
+            yaml_str = yaml.dump(st.session_state.agents_config, default_flow_style=False)
+            st.download_button(
+                label="⬇️ Download YAML",
+                data=yaml_str,
+                file_name="agents.yaml",
+                mime="text/yaml"
+            )
+    
+    with col3:
+        if st.button("➕ Add Agent"):
+            new_agent = {
+                'name': f'Agent {len(st.session_state.agents_config["agents"]) + 1}',
+                'model': 'gemini-2.5-flash',
+                'provider': 'gemini',
+                'system_prompt': 'You are a helpful AI assistant.',
+                'user_prompt': '{{input}}',
+                'temperature': 0.7,
+                'max_tokens': 1000,
+                'top_p': 0.9
+            }
+            st.session_state.agents_config['agents'].append(new_agent)
+            st.rerun()
+    
+    st.divider()
+    
+    # Agent configuration UI
+    for idx, agent in enumerate(st.session_state.agents_config['agents']):
+        st.markdown(f'<div class="agent-card">', unsafe_allow_html=True)
+        
+        col1, col2 = st.columns([4, 1])
+        with col1:
+            st.subheader(f"🤖 Agent {idx + 1}: {agent['name']}")
+        with col2:
+            if st.button("🗑️", key=f"delete_agent_{idx}"):
+                st.session_state.agents_config['agents'].pop(idx)
+                st.rerun()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            agent['name'] = st.text_input(
+                "Agent Name",
+                value=agent['name'],
+                key=f"name_{idx}"
+            )
+        
+        with col2:
+            agent['provider'] = st.selectbox(
+                "Provider",
+                options=['gemini', 'openai', 'grok'],
+                index=['gemini', 'openai', 'grok'].index(agent['provider']),
+                key=f"provider_{idx}"
+            )
+        
+        with col3:
+            agent['model'] = st.selectbox(
+                "Model",
+                options=MODEL_OPTIONS[agent['provider']],
+                index=MODEL_OPTIONS[agent['provider']].index(agent['model']) if agent['model'] in MODEL_OPTIONS[agent['provider']] else 0,
+                key=f"model_{idx}"
+            )
+        
+        agent['system_prompt'] = st.text_area(
+            "System Prompt",
+            value=agent['system_prompt'],
+            height=100,
+            key=f"sys_{idx}"
+        )
+        
+        agent['user_prompt'] = st.text_area(
+            "User Prompt (use {{input}} for previous output)",
+            value=agent['user_prompt'],
+            height=100,
+            key=f"user_{idx}"
+        )
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            agent['temperature'] = st.slider(
+                "Temperature",
+                min_value=0.0,
+                max_value=2.0,
+                value=float(agent['temperature']),
+                step=0.1,
+                key=f"temp_{idx}"
+            )
+        with col2:
+            agent['max_tokens'] = st.number_input(
+                "Max Tokens",
+                min_value=100,
+                max_value=10000,
+                value=int(agent['max_tokens']),
+                step=100,
+                key=f"tokens_{idx}"
+            )
+        with col3:
+            agent['top_p'] = st.slider(
+                "Top P",
+                min_value=0.0,
+                max_value=1.0,
+                value=float(agent['top_p']),
+                step=0.05,
+                key=f"topp_{idx}"
+            )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.divider()
+
+# TAB 5: Pipeline Execution
+with tab5:
+    st.header("🚀 Pipeline Execution")
+    
+    if not st.session_state.ai_service:
+        st.warning("⚠️ Please configure API keys in the sidebar first!")
+    else:
+        # Input section
+        st.subheader("📥 Input")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("📄 Use Doc 1") and st.session_state.generated_docs:
+                st.session_state.pipeline_input = st.session_state.generated_docs[0]['content']
+        with col2:
+            if st.button("📄 Use Doc 2") and len(st.session_state.generated_docs) > 1:
+                st.session_state.pipeline_input = st.session_state.generated_docs[1]['content']
+        with col3:
+            if st.button("📄 Use Doc 3") and len(st.session_state.generated_docs) > 2:
+                st.session_state.pipeline_input = st.session_state.generated_docs[2]['content']
+        
+        pipeline_input = st.text_area(
+            "Input Text",
+            value=st.session_state.get('pipeline_input', ''),
+            height=200,
+            placeholder="Enter the text to process through the agent pipeline..."
+        )
+        
+        # Execute button
+        execute_col1, execute_col2 = st.columns([3, 1])
+        with execute_col1:
+            execute_btn = st.button(
+                "▶️ Execute Pipeline",
+                type="primary",
+                use_container_width=True,
+                disabled=not pipeline_input or not st.session_state.agents_config['agents']
+            )
+        with execute_col2:
+            if st.button("🗑️ Clear Results", use_container_width=True):
+                st.session_state.pipeline_results = []
+                st.session_state.follow_up_questions = []
+                st.rerun()
+        
+        if execute_btn:
+            st.session_state.pipeline_results = []
+            st.session_state.follow_up_questions = []
+            
+            # Progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            # Pipeline visualization
+            st.divider()
+            st.subheader("📊 Pipeline Progress")
+            
+            chart_placeholder = st.empty()
+            
+            current_input = pipeline_input
+            total_agents = len(st.session_state.agents_config['agents'])
+            
+            for idx, agent in enumerate(st.session_state.agents_config['agents']):
+                progress = (idx + 1) / total_agents
+                progress_bar.progress(progress)
+                status_text.markdown(f'<div class="status-box status-running">🔄 Running: {agent["name"]} ({idx + 1}/{total_agents})</div>', unsafe_allow_html=True)
+                
+                try:
+                    # Execute agent
+                    result = st.session_state.ai_service.run_agent(agent, current_input)
+                    
+                    st.session_state.pipeline_results.append({
+                        'agent': agent['name'],
+                        'model': f"{agent['provider']}/{agent['model']}",
+                        'input': current_input[:200] + '...' if len(current_input) > 200 else current_input,
+                        'output': result,
+                        'status': 'success',
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    
+                    current_input = result
+                    
+                    # Update visualization
+                    fig = create_pipeline_visualization(st.session_state.pipeline_results, total_agents)
+                    chart_placeholder.plotly_chart(fig, use_container_width=True)
+                    
+                except Exception as e:
+                    st.session_state.pipeline_results.append({
+                        'agent': agent['name'],
+                        'model': f"{agent['provider']}/{agent['model']}",
+                        'input': current_input[:200] + '...' if len(current_input) > 200 else current_input,
+                        'output': '',
+                        'status': 'error',
+                        'error': str(e),
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    status_text.markdown(f'<div class="status-box status-error">❌ Error in {agent["name"]}: {str(e)}</div>', unsafe_allow_html=True)
+                    break
+            
+            # Generate follow-up questions
+            if st.session_state.pipeline_results and st.session_state.pipeline_results[-1]['status'] == 'success':
+                status_text.markdown('<div class="status-box status-running">🔄 Generating follow-up questions...</div>', unsafe_allow_html=True)
+                try:
+                    final_output = st.session_state.pipeline_results[-1]['output']
+                    questions = st.session_state.ai_service.generate_follow_up_questions(final_output)
+                    st.session_state.follow_up_questions = questions
+                except Exception as e:
+                    st.warning(f"⚠️ Could not generate follow-up questions: {str(e)}")
+                
+                progress_bar.progress(1.0)
+                status_text.markdown('<div class="status-box status-success">✅ Pipeline completed successfully!</div>', unsafe_allow_html=True)
+                st.balloons()
+        
+        # Display results
+        if st.session_state.pipeline_results:
+            st.divider()
+            st.subheader("📋 Pipeline Results")
+            
+            for idx, result in enumerate(st.session_state.pipeline_results):
+                status_icon = "✅" if result['status'] == 'success' else "❌"
+                status_class = "status-success" if result['status'] == 'success' else "status-error"
+                
+                with st.expander(f"{status_icon} Step {idx + 1}: {result['agent']} ({result['model']})", expanded=(idx == len(st.session_state.pipeline_results) - 1)):
+                    if result['status'] == 'success':
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("**Input:**")
+                            st.text_area("", value=result['input'], height=150, disabled=True, key=f"in_{idx}")
+                        with col2:
+                            st.markdown("**Output:**")
+                            st.text_area("", value=result['output'], height=150, disabled=True, key=f"out_{idx}")
+                    else:
+                        st.error(f"Error: {result.get('error', 'Unknown error')}")
+            
+            # Follow-up questions
+            if st.session_state.follow_up_questions:
+                st.divider()
+                st.subheader("💡 Follow-up Questions")
+                st.markdown('<div class="metric-card">', unsafe_allow_html=True)
+                for i, question in enumerate(st.session_state.follow_up_questions, 1):
+                    st.markdown(f"**{i}.** {question}")
+                st.markdown('</div>', unsafe_allow_html=True)
+
+def create_pipeline_visualization(results, total_agents):
+    """Create an interactive pipeline visualization"""
+    fig = go.Figure()
+    
+    # Create nodes for each agent
+    x_pos = []
+    y_pos = []
+    colors = []
+    text = []
+    
+    for idx, result in enumerate(results):
+        x_pos.append(idx)
+        y_pos.append(1)
+        colors.append('#28A745' if result['status'] == 'success' else '#DC3545')
+        text.append(f"{result['agent']}<br>{result['model']}")
+    
+    # Add remaining agents
+    for idx in range(len(results), total_agents):
+        x_pos.append(idx)
+        y_pos.append(1)
+        colors.append('#E6E6FA')
+        text.append(f"Agent {idx + 1}<br>Pending")
+    
+    # Add nodes
+    fig.add_trace(go.Scatter(
+        x=x_pos,
+        y=y_pos,
+        mode='markers+text',
+        marker=dict(
+            size=50,
+            color=colors,
+            line=dict(color='#9370DB', width=3)
+        ),
+        text=text,
+        textposition="bottom center",
+        textfont=dict(size=10),
+        hoverinfo='text'
+    ))
+    
+    # Add connections
+    for i in range(len(x_pos) - 1):
+        fig.add_trace(go.Scatter(
+            x=[x_pos[i], x_pos[i+1]],
+            y=[y_pos[i], y_pos[i+1]],
+            mode='lines',
+            line=dict(color='#9370DB', width=2),
+            hoverinfo='none',
+            showlegend=False
+        ))
+    
+    fig.update_layout(
+        title="Agent Pipeline Flow",
+        showlegend=False,
+        height=200,
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+    
+    return fig
+
+if __name__ == "__main__":
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("Made with 💜 by Flora Edition")
+    st.sidebar.markdown(f"Version 1.0.0 | {datetime.now().strftime('%Y-%m-%d')}")
